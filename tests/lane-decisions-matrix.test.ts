@@ -271,4 +271,10 @@ test("lane matrix: B-class sites carry no raw lane-name gates (#3482)", async ()
     const entryCount = (registryBlock.match(/profile:\s*\{/g) ?? []).length;
     const matchCount = (registryBlock.match(/matches:\s*\(/g) ?? []).length;
     assert.equal(entryCount, matchCount, "lane-decisions.ts WIRE_CLIENTS: every entry needs a matches() (#3482)");
+    // #3482 review: the profile registry must stay an IMPORT-FREE leaf —
+    // agent-side bundles (dist/agent/pi.js, omp.js) import it directly; any
+    // import here would drag server modules (preflight → kernel) into the
+    // client-process bundles (first cut of this PR doubled them).
+    const hpSrc = await readFile(new URL("host-profiles.ts", srcRoot), "utf8");
+    assert.ok(!/^import /m.test(hpSrc), "src/host-profiles.ts must stay import-free (#3482 review)");
 });

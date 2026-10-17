@@ -20,7 +20,7 @@ import { createForkAdopter } from "./fork-adopt.js";
 import { logHostEvent } from "./host-log.js";
 import { plainHttpTrusted } from "../private-host.js";
 import { allowPrivateHttpProviders } from "../knobs.js";
-import { hostProfileFor } from "../server/lane-decisions.js";
+import { hostProfileFor } from "../host-profiles.js";
 
 export type Ctx = {
     sessionManager?: { getSessionId?: () => string; getHeader?: () => unknown; getBranch?: () => unknown } | undefined;
