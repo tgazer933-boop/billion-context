@@ -241,3 +241,34 @@ test("lane matrix: prepares carry no raw pluginAgent name comparisons (#3417)", 
         assert.ok(!/(pluginAgent|pluginAgentHeader\([^)]*\))\s*===\s*"(dsh|pi|omp|opencode|codex|kimi)"/.test(src), `${f}: raw lane-name comparison — route it through resolveLaneDecisions (#3417)`);
     }
 });
+
+// #3482 Step 2 structural guard: the four migrated B-class sites must stay
+// name-gate-free — identity policy lives in the lane-decisions registries.
+test("lane matrix: B-class sites carry no raw lane-name gates (#3482)", async () => {
+    const srcRoot = new URL("../src/", import.meta.url);
+    // Site 3 (omp body stamp): the stamp channel is a registry property.
+    // Brace-balanced slice (helpers between exports make anchor-based bounds
+    // under-slice/over-slice).
+    const piSrc = await readFile(new URL("agent/pi.ts", srcRoot), "utf8");
+    const stampStart = piSrc.indexOf("export function stampPromptCacheKey");
+    let depth = 0, stampEnd = -1;
+    for (let i = stampStart; i < piSrc.length; i++) {
+        if (piSrc[i] === "{") depth++;
+        else if (piSrc[i] === "}") { depth--; if (depth === 0) { stampEnd = i + 1; break; } }
+    }
+    const stampFn = piSrc.slice(stampStart, stampEnd < 0 ? undefined : stampEnd);
+    assert.ok(!/agent\s*[!=]==\s*"(omp|pi|dsh)"/.test(stampFn), "agent/pi.ts stampPromptCacheKey: raw agent-name gate — use hostProfileFor(agent).stampsBodyPromptCacheKey (#3482 site 3)");
+    // Site 4 (instructions fingerprint): the wire-client header literals live
+    // ONLY in the registry — session-id.ts observes, never decides.
+    const sidSrc = await readFile(new URL("session-id.ts", srcRoot), "utf8");
+    const fpFn = sidSrc.slice(sidSrc.indexOf("export function instructionsFingerprintApplies"), sidSrc.indexOf("}", sidSrc.indexOf("instructionsFingerprintKeyed")));
+    assert.ok(!/x-codex-turn-metadata|x-claude-code-session-id/.test(fpFn), "session-id.ts instructionsFingerprintApplies: raw wire-client header literal — the decision table lives in WIRE_CLIENTS (#3482 site 4)");
+    // Registry hygiene: every wire-client entry's matches() must reference the
+    // signals it matches on (guards against an entry rotting into a copy-paste
+    // of another's condition).
+    const laneSrc = await readFile(new URL("server/lane-decisions.ts", srcRoot), "utf8");
+    const registryBlock = laneSrc.slice(laneSrc.indexOf("const WIRE_CLIENTS"), laneSrc.indexOf("resolveWireClientProfile"));
+    const entryCount = (registryBlock.match(/profile:\s*\{/g) ?? []).length;
+    const matchCount = (registryBlock.match(/matches:\s*\(/g) ?? []).length;
+    assert.equal(entryCount, matchCount, "lane-decisions.ts WIRE_CLIENTS: every entry needs a matches() (#3482)");
+});

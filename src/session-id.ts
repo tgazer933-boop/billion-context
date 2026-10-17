@@ -1,5 +1,6 @@
 import { isCodexClient } from "./codex-compact.js";
 import { isLoopbackAddress } from "./util.js";
+import { resolveWireClientProfile } from "./server/lane-decisions.js";
 
 export type ConversationIdentity = {
     value: string;
@@ -120,17 +121,20 @@ export function conversationHeaderSource(headers: Record<string, string | string
  * #1104, inverted).
  */
 export function instructionsFingerprintApplies(headers: Record<string, string | string[] | undefined>): boolean {
-    const turnMeta = headers["x-codex-turn-metadata"];
-    if (typeof turnMeta === "string" && turnMeta.trim().length > 0) return true;
-    // One definition of "codex traffic" process-wide (every other codex path in
-    // server.ts uses isCodexClient, #645). Its lenient fallback — a UA
-    // component starting with lowercase "codex" (#1641) — stays CASE-SENSITIVE
-    // precisely because a case-insensitive match would pull non-codex relays
-    // with "Codex"-shaped UAs back into the fingerprint and re-fork them
-    // mid-conversation (#1106); only known codex prefixes (incl. Codex
-    // Desktop, #1169) match case-insensitively.
-    if (isCodexClient(headers)) return true;
-    return conversationHeaderSource(headers)?.name === "x-claude-code-session-id";
+    // Detection only — the client-identity DECISION (who keys by
+    // instructions) lives in the lane-decisions wire-client registry
+    // (#3482 site 4): the header-name literals are registry data, not
+    // scattered comparisons. Signals are name-free observations here.
+    const headerNames = new Set<string>();
+    for (const [name, value] of Object.entries(headers ?? {})) {
+        const first = Array.isArray(value) ? value[0] : value;
+        if (typeof first === "string" && first.trim().length > 0) headerNames.add(name);
+    }
+    return resolveWireClientProfile({
+        headerNames,
+        conversationSourceName: conversationHeaderSource(headers)?.name,
+        codexUserAgent: isCodexClient(headers),
+    }).instructionsFingerprintKeyed;
 }
 
 /** #1916/#1307/#1314: whether the persona fingerprint (session id + system

@@ -20,6 +20,7 @@ import { createForkAdopter } from "./fork-adopt.js";
 import { logHostEvent } from "./host-log.js";
 import { plainHttpTrusted } from "../private-host.js";
 import { allowPrivateHttpProviders } from "../knobs.js";
+import { hostProfileFor } from "../server/lane-decisions.js";
 
 export type Ctx = {
     sessionManager?: { getSessionId?: () => string; getHeader?: () => unknown; getBranch?: () => unknown } | undefined;
@@ -445,7 +446,12 @@ function noteOmpCoworkBypass(modelId: string): void {
 // proxy's anonymous prefix-affinity sessions (#309): compression still works,
 // /acp lookup by session id does not — acceptable vs a guaranteed 400.
 export function stampPromptCacheKey(event: unknown, ctx: Ctx, agent: string): Record<string, unknown> | undefined {
-    if (agent !== "omp") return undefined;
+    // #3482 site 3: the identity-stamp CHANNEL is a registry property — omp
+    // stamps the body pck, pi stamps x-bili-plugin-conversation in
+    // before_provider_headers (which outranks the body field). No adapter-side
+    // name gate.
+    const profile = hostProfileFor(agent);
+    if (!profile.stampsBodyPromptCacheKey) return undefined;
     if (!destinationRoutedThroughProxy(ctx.model?.baseUrl)) {
         // #1579: native omp mode routes at the FETCH layer — the model
         // baseUrl stays the real upstream, so the launcher-shaped checks
@@ -483,7 +489,9 @@ export function stampPromptCacheKey(event: unknown, ctx: Ctx, agent: string): Re
         // stamp where the transport is proven direct: those requests go
         // direct anyway (uncompressed, anonymous to the proxy) — soft
         // identity loss instead of a guaranteed hard failure (#1403).
-        if (ompCoworkTransportBypassesFetch(ctx.model, process.env)) {
+        // #3482 site 2: whether that transport is even POSSIBLE is a registry
+        // property; the env-observation below is the per-request truth.
+        if (profile.coworkTransportPossible && ompCoworkTransportBypassesFetch(ctx.model, process.env)) {
             noteOmpCoworkBypass(ctx.model?.id ?? base);
             return undefined;
         }
